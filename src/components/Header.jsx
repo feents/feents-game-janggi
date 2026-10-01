@@ -1,9 +1,11 @@
+import logoMark from '../assets/logo-mark.svg';
+
 export default function Header() {
   return (
     <header className="site-header">
       <div className="header__left">
         <a className="header__brand" href="/" aria-label="FEENTS 장기 홈">
-          <img className="header__logo-img" src="/logo-mark.svg" alt="" width="28" height="28" />
+          <img className="header__logo-img" src={logoMark} alt="" width="28" height="28" />
           <span className="header__wordmark">FEENTS</span>
         </a>
         <span className="header__crumb"><b>F</b> · Finger</span>

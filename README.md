@@ -23,6 +23,8 @@ npm run preview
 
 Copy `dist/` to the nginx web root and apply `deploy/nginx.conf`. Production must be served over **HTTPS**. The example nginx configuration is an HTTP static server block intended to sit behind a proxy that terminates TLS. For a public service, configure HTTPS at the proxy or add TLS configuration to nginx. Keep `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on document and Worker responses, and serve `.wasm` files as `application/wasm`. Engine requests must not fall back to HTML.
 
+GitHub Actions uses `scripts/deploy.sh` to sync the contents of `dist/` over SSH with `rsync --delete --delete-delay --delay-updates`. Files absent from the build, including old hashed bundles, are removed from `DEPLOY_PATH` after transfer. Use an existing writable directory dedicated to this app, since its contents are mirrored to the build. The server must have rsync installed; the workflow installs rsync and OpenSSH on its runner. Deployment uses the existing `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`, and `DEPLOY_PATH` Secrets, with optional `SERVER_PORT` (default 22).
+
 A modern browser with WASM SIMD, Worker, and SharedArrayBuffer support is required. Local localhost and 127.0.0.1 addresses can be tested over HTTP. Some in-app browsers do not provide shared memory; users are prompted to open the game in a regular browser. Actual UI testing has been performed in Chrome. Testing on Safari and Firefox devices remains separate work.
 
 ## Game features
@@ -85,11 +87,12 @@ The build script downloads the pinned source into a temporary directory, applies
 
 ## Verification scope
 
-`npm test` runs 71 tests covering formations and scoring, actual WASM rules and AI, time controls, and game state. The main checks include:
+`npm test` runs 79 tests covering formations and scoring, actual WASM rules and AI, time controls, game state, and deployment. Bash, OpenSSH, and rsync are required for the deployment tests. The main checks include:
 
 - All 256 initial combinations of sides, formations, and rules; coordinate/FEN round trips; and movement, blocking, captures, and palace restrictions for every piece type.
 - Breaking, accepting, and disabling bikjang; consecutive passes; the 10↔9-point material threshold and compensation; checkmate precedence; repetition restrictions; and history restoration.
 - Actual legal AI moves across 27 difficulty levels and eight rule variants, searches immediately before a repetition limit, and complete AI games from initial setup to the end.
+- Actual local rsync updates and stale-file removal, invalid deployment settings, incomplete builds, symlinks, SSH/transfer failure handling, and temporary key cleanup. Deployment tests use temporary directories and never connect to a production server.
 - Overtime boundaries and delayed clock updates; moving first or second; zero, limited, and unlimited undo allowances; search cancellation; late responses after resignation or a new game; error recovery; and leaving the page.
 
 Browser checks cover actual human moves and AI replies for both Cho and Han, undo during AI search and after a reply, keyboard moves, a 390 px mobile layout, passing, resignation, new games, and actual overtime expiry. Development and preview servers started for testing are stopped after verification.

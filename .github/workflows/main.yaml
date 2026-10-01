@@ -36,47 +36,22 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Install deployment tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends rsync openssh-client
+
       - name: Test App
         run: npm test
 
       - name: Build App
         run: npm run build
 
-      - name: Validate deployment configuration
+      - name: Upload built files
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          set -euo pipefail
-          for name in SERVER_HOST SERVER_USER SSH_PRIVATE_KEY DEPLOY_PATH; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Required secret is missing: ${name}"
-              exit 1
-            fi
-          done
-          if [[ ! "$DEPLOY_PATH" =~ ^(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)+/?$ || "$DEPLOY_PATH" == *'..'* ]]; then
-            echo "::error::DEPLOY_PATH must be an absolute path to the dedicated web root."
-            exit 1
-          fi
-          test -f dist/index.html
-          test -f dist/engine/stockfish.wasm
-          test -f dist/engine/ffish.wasm
-
-      - name: Upload built files
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0 · composite action
-        with:
-          version: '1.8.0'
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SERVER_PORT || '22' }}
-          source: 'dist/*'
-          target: ${{ secrets.DEPLOY_PATH }}
-          strip_components: 1
-          overwrite: true
-          rm: false
-          debug: false
-          timeout: 30s
-          command_timeout: 10m
+          SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
+        run: bash scripts/deploy.sh

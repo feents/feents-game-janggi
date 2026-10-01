@@ -23,6 +23,8 @@ npm run preview
 
 `dist/`를 nginx 웹 루트에 복사하고 `deploy/nginx.conf`를 적용합니다. 운영 주소는 **HTTPS**로 제공해야 합니다. 예시 nginx 설정은 TLS를 종료하는 프록시 뒤에서 사용하는 HTTP 정적 서버 블록이므로, 공개 서비스에서는 앞단 HTTPS 또는 nginx TLS 설정을 추가합니다. 문서와 Worker 응답에 `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`를 유지하고 `.wasm`은 `application/wasm`으로 제공합니다. 엔진 요청을 HTML로 fallback하지 않습니다.
 
+GitHub Actions는 `scripts/deploy.sh`에서 SSH와 `rsync --delete --delete-delay --delay-updates`로 `dist/`의 내용을 동기화합니다. 빌드에서 사라진 파일과 이전 해시 번들은 전송 후 `DEPLOY_PATH`에서 삭제됩니다. 이 경로는 기존에 존재하고 쓰기 가능한 장기 앱 전용 폴더여야 하며, 내부 파일이 빌드 내용과 같도록 정리됩니다. 서버에는 rsync가 설치되어 있어야 하고, Actions 실행 환경에는 workflow가 rsync와 OpenSSH를 설치합니다. 기존 `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`, `DEPLOY_PATH` Secrets와 선택적인 `SERVER_PORT`(기본 22)를 사용합니다.
+
 WASM SIMD, Worker, SharedArrayBuffer를 지원하는 최신 브라우저가 필요합니다. 로컬 localhost·127.0.0.1은 HTTP로 테스트할 수 있습니다. 공유 메모리를 제공하지 않는 일부 앱 내장 브라우저에서는 일반 브라우저로 열도록 안내합니다. 현재 실제 UI 검증 브라우저는 Chrome이며 Safari·Firefox 실기기 검증은 별도입니다.
 
 ## 대국 기능
@@ -85,11 +87,12 @@ npm run build
 
 ## 검증 범위
 
-`npm test`는 총 71개 테스트로 기존 상차림·점수 검증과 실제 WASM 규칙·AI 테스트, 시간 및 대국 상태 테스트를 실행합니다. 주요 검증은 다음과 같습니다.
+`npm test`는 총 79개 테스트로 기존 상차림·점수 검증과 실제 WASM 규칙·AI 테스트, 시간·대국 상태·배포 테스트를 실행합니다. 배포 테스트에는 Bash, OpenSSH, rsync가 필요합니다. 주요 검증은 다음과 같습니다.
 
 - 진영·상차림·규칙의 256개 초기 조합, 좌표/FEN 왕복, 모든 기물의 이동·막힘·잡기·궁성 제약.
 - 빅장 해소/수용/끔, 연속 한수쉼, 기물 10↔9점 경계와 덤, 외통 우선, 반복 금지와 이력 복원.
 - 27개 난이도 및 8개 규칙의 실제 AI 합법 착수, 반복 직전 탐색, 초기 배치부터 종료까지 AI 대국.
+- 실제 로컬 rsync 갱신·삭제, 잘못된 배포 설정·불완전한 빌드·심볼릭 링크 차단, SSH·전송 실패 처리와 임시 키 정리. 배포 테스트는 임시 폴더만 사용하고 운영 서버에 접속하지 않습니다.
 - 초읽기 경계·지연 정산, 선후공, 무르기 0/유한/무제한, 탐색 취소·기권·새 게임의 늦은 응답, 오류 복구, 페이지 이탈.
 
 브라우저에서는 초·한 실제 착수와 AI 응수, AI 탐색 중/응수 후 무르기, 키보드 착수, 모바일 390px 배치, 한수쉼·기권·새 게임, 실제 초읽기 시간 초과를 확인합니다. 테스트용으로 직접 시작한 개발·미리보기 서버는 확인 후 종료합니다.
