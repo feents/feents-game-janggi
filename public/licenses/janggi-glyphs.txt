@@ -1,0 +1,17 @@
+장기 말 글자 도안 출처
+
+저작자: Kadagaden (Ka-hu)
+원본: chess-pieces / janggi_kakao_janggi_style_white
+https://github.com/Kadagaden/chess-pieces/tree/b035b0cc6a68e9fb99c872c8fe073c3ae3eba8a0/janggi_kakao_janggi_style_white
+라이선스: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+전문: CC-BY-4.0.txt
+
+2026-09-29 FEENTS 장기에서 변경한 내용:
+- 14개 원본 말 SVG에서 초나라 초서체와 한나라 해서체 글자 경로만 추출
+- 원본의 말 몸체, 그림자, 필터 및 그라데이션 제거
+- 프로젝트에서 만든 팔각형 말 위에 배치하도록 크기와 위치 조정
+- 초나라 파란색 / 한나라 빨간색을 프로젝트 색상으로 변경
+- 글자 윤곽은 src/assets/janggi-glyphs.js에 저장하고 SVG 경로로 렌더링
+
+원작자가 FEENTS 또는 본 프로젝트를 후원하거나 보증한다는 의미가 아닙니다.

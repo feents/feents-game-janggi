@@ -1,0 +1,261 @@
+--- a/src/variant.h
++++ b/src/variant.h
+@@ -119,6 +119,11 @@
+   EnclosingRule flipEnclosedPieces = NO_ENCLOSING;
+   bool freeDrops = false;
+ 
++  // FEENTS Janggi: shared by the rules library and search engine.
++  bool feentsRules = false;
++  bool feentsMaterial = false;
++  bool feentsRepetition = false;
++
+   // game end
+   PieceSet nMoveRuleTypes[COLOR_NB] = {piece_set(PAWN), piece_set(PAWN)};
+   int nMoveRule = 50;
+--- a/src/variant.cpp
++++ b/src/variant.cpp
+@@ -1968,6 +1968,24 @@
+     add("xiangqi", xiangqi_variant());
+     add("manchu", manchu_variant());
+     add("supply", supply_variant());
++    for (int b = 0; b < 2; ++b)
++        for (int m = 0; m < 2; ++m)
++            for (int r = 0; r < 2; ++r)
++            {
++                Variant* v = janggi_variant()->init();
++                v->feentsRules = true;
++                v->feentsMaterial = m;
++                v->feentsRepetition = r;
++                v->bikjangRule = b;
++                v->flyingGeneral = false;
++                v->materialCounting = NO_MATERIAL_COUNTING;
++                v->nMoveRule = 0;
++                v->nFoldRule = 0;
++                v->perpetualCheckIllegal = false;
++                v->moveRepetitionIllegal = false;
++                v->nnueAlias = "janggi";
++                add("feents-b" + std::to_string(b) + "-m" + std::to_string(m) + "-r" + std::to_string(r), v);
++            }
+     add("janggi", janggi_variant());
+     add("janggitraditional", janggi_traditional_variant());
+     add("janggimodern", janggi_modern_variant());
+--- a/src/position.h
++++ b/src/position.h
+@@ -59,6 +59,7 @@
+ 
+   // Not copied when making a move (will be recomputed anyhow)
+   Key        key;
++  Key        feentsHistoryKey;
+   Bitboard   checkersBB;
+   Piece      unpromotedCapturedPiece;
+   Piece      unpromotedBycatch[SQUARE_NB];
+@@ -280,6 +281,9 @@
+   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
+ 
+   // Properties of moves
++  bool feents_rules() const { return var->feentsRules; }
++  int feents_points(Color c) const;
++  std::string feents_end_reason() const;
+   bool legal(Move m) const;
+   bool pseudo_legal(const Move m) const;
+   bool virtual_drop(Move m) const;
+@@ -1372,6 +1376,9 @@
+ }
+ 
+ inline Key Position::key() const {
++  if (var->feentsRules)
++      return st->key ^ make_key(unsigned(st->pass) + 2 * unsigned(st->bikjang))
++             ^ (var->feentsRepetition ? st->feentsHistoryKey : 0);
+   return st->rule50 < 14 ? st->key
+                          : st->key ^ make_key((st->rule50 - 14) / 8);
+ }
+--- a/src/position.cpp
++++ b/src/position.cpp
+@@ -544,6 +544,7 @@
+   tsumeMode = Options["TsumeMode"];
+   thisThread = th;
+   set_state(st);
++  st->feentsHistoryKey = make_key(st->key);
+ 
+   assert(pos_is_ok());
+ 
+@@ -1058,6 +1059,19 @@
+   assert(color_of(moved_piece(m)) == us);
+   assert(!count<KING>(us) || piece_on(square<KING>(us)) == make_piece(us, KING));
+   assert(board_bb() & to);
++
++  // Forbid the move creating the third occurrence of board + turn.
++  // Janggi has no promotions, castling, en-passant or drops. Captures cannot repeat.
++  if (var->feentsRepetition && (!capture(m) || is_pass(m))
++      && !(is_pass(m) && (st->pass || st->bikjang)))
++  {
++      Key next = is_pass(m) ? st->key ^ Zobrist::side : key_after(m);
++      int matches = 0;
++      const StateInfo* previous = st;
++      for (int i = 0; previous && i <= st->pliesFromNull; ++i, previous = previous->previous)
++          if (previous->key == next && ++matches == 2)
++              return false;
++  }
+ 
+   // Illegal checks
+   if ((!checking_permitted() || (sittuyin_promotion() && type_of(m) == PROMOTION) || (!drop_checks() && type_of(m) == DROP)) && gives_check(m))
+@@ -2091,6 +2105,8 @@
+ 
+   // Update the key with the final value
+   st->key = k;
++  st->feentsHistoryKey = make_key(st->previous->feentsHistoryKey ^ k);
++
+   // Calculate checkers bitboard (if move gives check)
+   st->checkersBB = givesCheck ? attackers_to(square<KING>(them), us) & pieces(us) : Bitboard(0);
+   assert(givesCheck == bool(st->checkersBB));
+@@ -2756,11 +2772,52 @@
+   return false;
+ }
+ 
++int Position::feents_points(Color c) const {
++  return 13 * count<ROOK>(c) + 7 * count<JANGGI_CANNON>(c)
++       + 5 * count<HORSE>(c) + 3 * count<JANGGI_ELEPHANT>(c)
++       + 3 * count<WAZIR>(c) + 2 * count<SOLDIER>(c);
++}
++
++std::string Position::feents_end_reason() const {
++  if (!var->feentsRules) return "";
++  if (checkers())
++  {
++      bool escape = false;
++      for (const auto& move : MoveList<EVASIONS>(*this))
++          if (legal(move)) { escape = true; break; }
++      if (!escape) return "checkmate";
++  }
++  if (var->feentsMaterial && (feents_points(WHITE) < 10 || feents_points(BLACK) < 10)) return "material";
++  if (st->pliesFromNull > 0 && st->bikjang && st->previous->bikjang) return "bikjang";
++  if (st->pliesFromNull > 0 && st->pass && st->previous->pass) return "double-pass";
++  if (MoveList<LEGAL>(*this).size() == 0) return "no-legal-move";
++  return "";
++}
++
+ /// Position::is_immediate_game_end() tests whether the position ends the game
+ /// immediately by a variant rule, i.e., there are no more legal moves.
+ /// It does not detect stalemates.
+ 
+ bool Position::is_immediate_game_end(Value& result, int ply) const {
++
++  if (var->feentsRules)
++  {
++      // Checkmate takes precedence over material adjudication. Use EVASIONS,
++      // not LEGAL, to avoid recursion through is_immediate_game_end().
++      if (checkers())
++      {
++          bool escape = false;
++          for (const auto& move : MoveList<EVASIONS>(*this))
++              if (legal(move)) { escape = true; break; }
++          if (!escape) { result = mated_in(ply); return true; }
++      }
++      if (var->feentsMaterial && (feents_points(WHITE) < 10 || feents_points(BLACK) < 10))
++      {
++          bool whiteWins = 2 * feents_points(WHITE) > 2 * feents_points(BLACK) + 3;
++          result = (whiteWins == (sideToMove == WHITE)) ? mate_in(ply) : mated_in(ply);
++          return true;
++      }
++  }
+ 
+   // Extinction
+   // Extinction does not apply for pseudo-royal pieces, because they can not be captured
+@@ -3115,6 +3172,8 @@
+ /// or an earlier position has a move that directly reaches the current position.
+ 
+ bool Position::has_game_cycle(int ply) const {
++
++  if (var->feentsRules) return false;
+ 
+   int j;
+ 
+--- a/src/search.cpp
++++ b/src/search.cpp
+@@ -933,7 +933,8 @@
+         return eval;
+ 
+     // Step 8. Null move search with verification search (~40 Elo)
+-    if (   !PvNode
++    if (   !pos.feents_rules()
++        && !PvNode
+         && (ss-1)->currentMove != MOVE_NULL
+         && (ss-1)->statScore < 23767
+         &&  eval >= beta
+--- a/src/ffishjs.cpp
++++ b/src/ffishjs.cpp
+@@ -281,8 +281,11 @@
+   }
+ 
+   bool is_insufficient_material() const {
++    if (pos.feents_rules()) return false;
+     return Stockfish::has_insufficient_material(WHITE, pos) && Stockfish::has_insufficient_material(BLACK, pos);
+   }
++
++  std::string termination_reason() const { return pos.feents_end_reason(); }
+ 
+   bool is_game_over() const {
+     return is_game_over(false);
+@@ -722,6 +725,7 @@
+     .function("checkedPieces", &Board::checked_pieces)
+     .function("isCheck", &Board::is_check)
+     .function("isBikjang", &Board::is_bikjang)
++    .function("terminationReason", &Board::termination_reason)
+     .function("isCapture", &Board::is_capture)
+     .function("moveStack", &Board::move_stack)
+     .function("pushMoves", &Board::push_moves)
+--- a/src/emscripten/Makefile
++++ b/src/emscripten/Makefile
+@@ -21,7 +21,7 @@
+ 	-s USE_PTHREADS=1 \
+ 	-s PROXY_TO_PTHREAD=1 \
+ 	-s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=$$((1 << 27)) -s MAXIMUM_MEMORY=$$((1 << 31)) \
+-	-s FILESYSTEM=1 -s EXTRA_EXPORTED_RUNTIME_METHODS=["FS"] \
++	-s FILESYSTEM=1 -s EXPORTED_RUNTIME_METHODS=["FS"] \
+ 	-s ALLOW_UNIMPLEMENTED_SYSCALLS
+ 
+ ifeq ($(minify_js),yes)
+--- a/src/emscripten/Makefile
++++ b/src/emscripten/Makefile
+@@ -18,7 +18,7 @@
+ 	-s MODULARIZE=1 -s EXPORT_NAME="Stockfish" -s ENVIRONMENT=web,worker,node \
+ 	-s STRICT=1 \
+ 	-s ASYNCIFY=1 -s 'ASYNCIFY_IMPORTS=["emscripten_utils_getline_impl"]' \
+-	-s USE_PTHREADS=1 \
++	-pthread \
+ 	-s PROXY_TO_PTHREAD=1 \
+ 	-s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=$$((1 << 27)) -s MAXIMUM_MEMORY=$$((1 << 31)) \
+ 	-s FILESYSTEM=1 -s EXPORTED_RUNTIME_METHODS=["FS"] \
+--- a/src/ffishjs.cpp
++++ b/src/ffishjs.cpp
+@@ -764,7 +764,7 @@
+   function("setOption", &ffish::set_option<std::string>);
+   function("setOptionInt", &ffish::set_option<int>);
+   function("setOptionBool", &ffish::set_option<bool>);
+-  function("readGamePGN", &read_game_pgn);
++  function("readGamePGN", &read_game_pgn, return_value_policy::take_ownership());
+   function("variants", &ffish::available_variants);
+   function("loadVariantConfig", &ffish::load_variant_config);
+   function("capturesToHand", &ffish::captures_to_hand);
+--- a/src/Makefile_js
++++ b/src/Makefile_js
+@@ -56,7 +56,7 @@
+ 
+ ### Compile as ES6/ES2015 module
+ ifeq ($(es6),yes)
+-	CXXFLAGS += -s ENVIRONMENT='web,worker' -s EXPORT_ES6=1 -s MODULARIZE=1 -s USE_ES6_IMPORT_META=0
++	CXXFLAGS += -s ENVIRONMENT='web,worker,node' -s EXPORT_ES6=1 -s MODULARIZE=1 -s USE_ES6_IMPORT_META=0
+ endif
+ 
+ .PHONY: help objclean clean build deps test serve
+--- a/src/Makefile_js
++++ b/src/Makefile_js
+@@ -56,7 +56,7 @@
+ 
+ ### Compile as ES6/ES2015 module
+ ifeq ($(es6),yes)
+-	CXXFLAGS += -s ENVIRONMENT='web,worker,node' -s EXPORT_ES6=1 -s MODULARIZE=1 -s USE_ES6_IMPORT_META=0
++	CXXFLAGS += -s ENVIRONMENT='web,worker,node' -s EXPORT_ES6=1 -s MODULARIZE=1 -s USE_ES6_IMPORT_META=1
+ endif
+ 
+ .PHONY: help objclean clean build deps test serve

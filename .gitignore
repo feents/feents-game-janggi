@@ -1,0 +1,40 @@
+# 설치·빌드·테스트 생성물
+node_modules/
+dist/
+coverage/
+.vite/
+.cache/
+*.log
+npm-debug.log*
+
+# 로컬 환경·인증정보 (값 없는 예시는 보관 가능)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.netrc
+
+# OS·에디터 개인 설정
+.DS_Store
+.idea/
+.vscode/
+
+# 바이브코딩 지침·작업 기록·검증 이미지
+/AGENTS.md
+/prompt.md
+/result_*.html
+/docs/
+/.codex/
+/.claude/
+/.cursor/
+
+# 로컬 SDK·임시 작업 폴더 (엔진 소스/패치·재빌드 자료는 보존)
+/emsdk/
+/.emscripten_cache/
+/.tmp/

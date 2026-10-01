@@ -1,0 +1,32 @@
+{
+  "source": "https://github.com/fairy-stockfish/fairy-stockfish.wasm",
+  "commit": "4d4b39395955df4695f28887800f0836f9c4d37d",
+  "emscripten": "3.1.74",
+  "evaluation": "classical (Use NNUE=false)",
+  "patch": "engine/feents-rules.patch",
+  "glue": "scripts/patch-engine-glue.mjs",
+  "ai": {
+    "threads": 1,
+    "hashMiB": 16,
+    "simd": true,
+    "sharedMemory": true
+  },
+  "files": {
+    "stockfish.js": {
+      "bytes": 167054,
+      "sha256": "b0d021c21560c7e20e038675269c1d345c375eff4b2b272f39caf15bb9cb3c07"
+    },
+    "stockfish.wasm": {
+      "bytes": 1584335,
+      "sha256": "1e19b0fd1e164531a7e206e72f2876e9a146d8632b3c601b7d9a0dc410f76e35"
+    },
+    "ffish.js": {
+      "bytes": 104486,
+      "sha256": "b9f892c6540a2dd7fb0408e4c0190aafc92e774d024b6a57a492f3173d64f460"
+    },
+    "ffish.wasm": {
+      "bytes": 890378,
+      "sha256": "a17515a6c00236ce1ce77528937baa00c066da4044a2656dcdac62c943aab27a"
+    }
+  }
+}
