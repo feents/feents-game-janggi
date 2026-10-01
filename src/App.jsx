@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowRight, BookOpen, Flag, RotateCcw, SkipForward, Undo2 } from 'lucide-react';
 import Header from './components/Header.jsx';
 import { JanggiBoard, PlayerBar } from './components/Board.jsx';
@@ -8,6 +8,7 @@ import ReviewControls from './components/ReviewControls.jsx';
 import { useCaptureMotion } from './components/useCaptureMotion.js';
 import { SIDES, UNLIMITED_UNDO, oppositeSide, undoLabel } from './settings.js';
 import { calculateMaterialScores } from './material-score.js';
+import { createBoardSelection } from './board-input.js';
 import { GameController, resultText } from './game/controller.js';
 import { parseMove } from './game/position-codec.js';
 import { EngineClient, engineSupportError } from './engine/client.js';
@@ -17,6 +18,7 @@ export default function App() {
   const game = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [selectionInput] = useState(createBoardSelection);
   const [actionMessage, setActionMessage] = useState('');
   const [resultDismissed, setResultDismissed] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(null);
@@ -57,7 +59,7 @@ export default function App() {
     window.addEventListener('pagehide', onExit);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', onExit); controller.destroy(); };
   }, [controller]);
-  useEffect(() => { setSelected(null); setActionMessage(''); }, [game.fen, game.phase, reviewIndex]);
+  useLayoutEffect(() => { selectionInput.reset(); setSelected(null); setActionMessage(''); }, [game.gameId, game.fen, game.phase, reviewIndex, selectionInput]);
   useEffect(() => {
     if (!isSettingUp && !showResult) (waiting ? startButtonRef : preparing ? loadingRef : boardRef).current?.focus();
   }, [isSettingUp, showResult, waiting, preparing]);
@@ -82,11 +84,10 @@ export default function App() {
   }, [playing, reviewing, reviewIndex, game.moves.length]);
 
   function selectSquare(square) {
-    if (!humanTurn) return;
-    if (selected && destinations.includes(square)) { controller.makeMove(`${selected}${square}`); setSelected(null); return; }
-    const piece = pieces.find(item => item.square === square);
-    if (piece?.side === settings.playerSide) { setSelected(selected === square ? null : square); setActionMessage(''); }
-    else { setSelected(null); setActionMessage('이동할 수 있는 점이 표시된 곳을 선택해 주세요.'); }
+    if (reviewing) return;
+    const input = selectionInput.select(controller.getSnapshot(), square);
+    setSelected(input.selected); setActionMessage(input.message);
+    if (input.move) controller.makeMove(input.move);
   }
   function startGame(nextSettings) {
     setIsSettingUp(false); setReviewIndex(null); setPlaying(false); setResultDismissed(false);

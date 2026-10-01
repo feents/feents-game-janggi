@@ -87,7 +87,7 @@ The build script downloads the pinned source into a temporary directory, applies
 
 ## Verification scope
 
-`npm test` runs 89 tests covering formations and scoring, actual WASM rules and AI, time controls, game state, touch areas, and deployment. Bash, OpenSSH, and rsync are required for the deployment tests. The main checks include:
+`npm test` runs 99 tests covering formations and scoring, actual WASM rules and AI, time controls, game state, touch areas, input, and deployment. Bash, OpenSSH, and rsync are required for the deployment tests. The main checks include:
 
 - All 256 initial combinations of sides, formations, and rules; coordinate/FEN round trips; and movement, blocking, captures, and palace restrictions for every piece type.
 - Breaking, accepting, and disabling bikjang; consecutive passes; the 10↔9-point material threshold and compensation; checkmate precedence; repetition restrictions; and history restoration.
@@ -97,6 +97,7 @@ The build script downloads the pinned source into a temporary directory, applies
 - Delayed or failed engine initialization, retries, and stale initialization responses from previous games; excluding preparation time from the clock and accepting the first move immediately after readiness. The main area stays blurred with a loading indicator during preparation.
 - Undo restoration keeps the board visible without a loading modal while briefly pausing moves, repeated undo actions, and the clock. Checks also cover restoration failure, leaving the page, and ignoring stale restoration responses after starting a new game.
 - Partitioning the board interior into 90 touch areas without gaps or overlaps, assigning corners to the nearest intersection, and mapping both Cho and Han orientations. Green move markers retain their size.
+- Immediate selection and movement through rapid consecutive taps, duplicate-click prevention, scrolling, dragging, multitouch, cancellation, keyboard and assistive input, and clearing selection on position changes. Actual WASM moves for both Cho and Han are checked without waiting for a UI update.
 
 Browser checks cover actual human moves and AI replies for both Cho and Han, undo during AI search and after a reply, keyboard moves, a 390 px mobile layout, passing, resignation, new games, and actual overtime expiry. Development and preview servers started for testing are stopped after verification.
 

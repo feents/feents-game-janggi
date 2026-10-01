@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { GameController, resultText } from '../src/game/controller.js';
 import { INITIAL_SETTINGS } from '../src/settings.js';
 import { ffish } from './helpers/rules.js';
+import { createBoardSelection, createBoardTap } from '../src/board-input.js';
 
 const flush = () => new Promise(resolve=>setImmediate(resolve));
 function harness({ deferInit = false } = {}) {
@@ -99,6 +100,30 @@ test('초 선택은 사용자 선공, 한 선택은 AI 선공이며 첫 사용�
       assert.equal(h.game.state.phase,playerSide==='cho'?'humanTurn':'aiThinking');
       assert.equal(h.game.state.canUndo,false);
       if(playerSide==='han') {h.searches[0].resolve('a4a5');await flush();assert.equal(h.game.state.phase,'humanTurn');assert.equal(h.game.state.canUndo,false);}
+    }finally{h.game.destroy();}
+  }
+});
+test('화면 갱신 없이 연속 탭한 사용자 착수는 초·한 모두 실제 WASM에 한 번만 반영된다',async()=>{
+  for(const playerSide of ['cho','han']) {
+    const h=harness();try {
+      await h.game.start({...INITIAL_SETTINGS,playerSide});
+      if(playerSide==='han'){h.searches[0].resolve('a4a5');await flush();}
+      const selection=createBoardSelection(), taps=createBoardTap(), requests=[];
+      const activate=square=>{
+        if(!square)return;
+        const input=selection.select(h.game.getSnapshot(),square);
+        if(input.move)requests.push(h.game.makeMove(input.move));
+      };
+      const squares=playerSide==='cho'?['a4','a5']:['a7','a6'];
+      for(const square of squares){
+        const event={pointerId:1,isPrimary:true,button:0,clientX:100,clientY:100};
+        taps.down(event,square,true);activate(taps.up(event));
+      }
+      for(const square of squares)activate(taps.click({detail:1},square));
+      assert.equal(requests.length,1);assert.equal(await requests[0],true);
+      assert.equal(h.game.state.moves.at(-1),squares.join(''));
+      assert.equal(h.game.state.phase,'aiThinking');
+      assert.equal(h.game.state.records.length,playerSide==='cho'?1:2);
     }finally{h.game.destroy();}
   }
 });

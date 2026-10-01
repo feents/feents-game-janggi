@@ -284,7 +284,9 @@ legend { padding: 0; }
 .board-input [role='button']:focus { outline: none; }
 .board-focus { fill: none; stroke: #007e6c; stroke-width: 2; opacity: 0; pointer-events: none; }
 .board-input [role='button']:focus-visible .board-focus { opacity: 1; }
-.board-input [aria-disabled='false']:hover .board-hitbox { fill: rgb(255 255 255 / 12%); }
+@media (hover: hover) and (pointer: fine) {
+  .board-input [aria-disabled='false']:hover .board-hitbox { fill: rgb(255 255 255 / 12%); }
+}
 .selected-ring { fill: none; stroke: #008571; stroke-width: 3; pointer-events: none; }
 .checked-ring { fill: none; stroke: #bd3831; stroke-width: 3; pointer-events: none; }
 .move-target { fill: #007e6c; opacity: .75; pointer-events: none; }
