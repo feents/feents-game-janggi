@@ -113,6 +113,73 @@ test('AI 생각 중 무르기는 한 수·시간을 복원하고 뒤늦은 AI �
     assert.ok(pending.engine.closed);
   }finally{h.game.destroy();}
 });
+test('AI 탐색 중·응수 후 무르기는 준비 상태 없이 복원하며 복원 중 착수·중복 무르기·시계를 멈춘다',async()=>{
+  for(const afterReply of [false,true]) {
+    const h=harness({deferInit:true});try {
+      const starting=h.game.start(INITIAL_SETTINGS);
+      h.initializations.forEach(init=>init.resolve());await starting;
+      const initial=h.game.state.history[0];
+      h.advance(3000);await h.game.makeMove('a4a5');
+      const previousSearch=h.searches[0];
+      if(afterReply){previousSearch.resolve('a7a6');await flush();}
+      const phases=[];
+      const unsubscribe=h.game.subscribe(()=>phases.push(h.game.state.phase));
+      try {
+        const restoring=h.game.undo();
+        assert.equal(h.game.state.phase,'restoring');assert.equal(h.game.state.canUndo,false);
+        assert.equal(h.game.state.turnStartedAt,null);
+        assert.equal(await h.game.makeMove('a4a5'),false);
+        await h.game.undo();assert.equal(h.engines.length,4);assert.equal(h.game.state.undoUsed,1);
+        h.advance(30_000);assert.deepEqual(h.game.state.displayClocks,initial.clocks);
+        if(!afterReply){previousSearch.resolve('a7a6');await flush();}
+        h.initializations[2].resolve();await flush();
+        assert.equal(h.game.state.phase,'restoring');assert.equal(h.game.state.moves.length,0);
+        h.initializations[3].resolve();await restoring;
+        assert.ok(!phases.includes('preparing'));
+        assert.ok(phases.slice(0,-1).every(phase=>phase==='restoring'));
+        assert.equal(h.game.state.phase,'humanTurn');assert.equal(h.game.state.turnStartedAt,33_000);
+        assert.deepEqual(h.game.state.pieces,initial.pieces);assert.deepEqual(h.game.state.captured,initial.captured);
+        assert.equal(h.game.state.fen,initial.fen);assert.equal(h.game.state.history.length,1);
+        assert.deepEqual(h.game.state.records,[]);assert.deepEqual(h.game.state.moves,[]);
+        assert.equal(await h.game.makeMove('a4a5'),true);
+      }finally{unsubscribe();}
+    }finally{h.game.destroy();}
+  }
+});
+test('무르기 복원 실패·페이지 이탈은 오류로 전환하고 명시적 재시도로 복구한다',async()=>{
+  for(const failure of ['init','suspend']) {
+    const h=harness({deferInit:true});try {
+      const starting=h.game.start(INITIAL_SETTINGS);
+      h.initializations.forEach(init=>init.resolve());await starting;
+      await h.game.makeMove('a4a5');const restoring=h.game.undo();
+      assert.equal(h.game.state.phase,'restoring');
+      if(failure==='init') h.initializations[2].reject(new Error('복원 실패'));
+      else h.game.suspend();
+      await flush();assert.equal(h.game.state.phase,'engineError');
+      assert.ok(h.engines.every(engine=>engine.closed));
+      const retry=h.game.prepare();assert.equal(h.game.state.phase,'preparing');
+      h.initializations[2].resolve();h.initializations[3].resolve();await restoring;
+      assert.equal(h.game.state.phase,'preparing');
+      h.initializations[4].resolve();h.initializations[5].resolve();await retry;
+      assert.equal(h.game.state.phase,'humanTurn');assert.equal(h.game.state.error,'');
+      assert.deepEqual(h.game.state.moves,[]);assert.equal(await h.game.makeMove('a4a5'),true);
+    }finally{h.game.destroy();}
+  }
+});
+test('무르기 복원 중 새 대국을 시작하면 이전 복원 응답을 버린다',async()=>{
+  const h=harness({deferInit:true});try {
+    const starting=h.game.start(INITIAL_SETTINGS);
+    h.initializations.forEach(init=>init.resolve());await starting;
+    await h.game.makeMove('a4a5');const restoring=h.game.undo();
+    const next=h.game.start({...INITIAL_SETTINGS,playerSide:'han'});
+    h.initializations[2].resolve();h.initializations[3].resolve();await restoring;
+    assert.equal(h.game.state.phase,'preparing');assert.equal(h.game.state.gameId,2);
+    h.initializations[4].resolve();h.initializations[5].resolve();await next;
+    assert.equal(h.game.state.phase,'aiThinking');assert.equal(h.game.state.settings.playerSide,'han');
+    assert.equal(h.game.state.undoUsed,0);assert.deepEqual(h.game.state.moves,[]);
+    h.searches.at(-1).resolve('a4a5');await flush();assert.equal(h.game.state.phase,'humanTurn');
+  }finally{h.game.destroy();}
+});
 test('AI 응수 뒤 무르기는 두 수를 복원하며 제한 횟수와 무제한을 지킨다',async()=>{
   for(const undoCount of [0,1,11]) {
     const h=harness();try {

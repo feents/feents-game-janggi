@@ -5,7 +5,7 @@ import { difficultyProfile } from '../engine/difficulty.js';
 import { advancePosition, historySnapshot } from './history.js';
 
 const clone = (value) => structuredClone(value);
-export const ACTIVE_PHASES = ['humanTurn', 'aiThinking', 'applyingMove'];
+export const ACTIVE_PHASES = ['humanTurn', 'aiThinking', 'applyingMove', 'restoring'];
 
 function freshState(settings) {
   const fen = initialFen(settings), clocks = createClocks(settings);
@@ -50,10 +50,10 @@ export class GameController {
     return { ...position, pieces: saved.pieces, captured: saved.captured };
   }
 
-  async prepare() {
+  async prepare({ restoring = false } = {}) {
     const gen = ++this.generation;
     this.stopEngines();
-    this.update({ phase: 'preparing', turnStartedAt: null, error: '' });
+    this.update({ phase: restoring ? 'restoring' : 'preparing', turnStartedAt: null, error: '' });
     try {
       const unsupported = this.supportError();
       if (unsupported) throw new Error(unsupported);
@@ -144,9 +144,9 @@ export class GameController {
     const frame = this.frames.pop();
     this.generation++;
     this.stopEngines();
-    this.update({ history: this.state.history.slice(0, frame.index + 1), moves: this.state.moves.slice(0, frame.index), records: this.state.records.slice(0, frame.index),
+    this.update({ phase: 'restoring', history: this.state.history.slice(0, frame.index + 1), moves: this.state.moves.slice(0, frame.index), records: this.state.records.slice(0, frame.index),
       clocks: clone(frame.clocks), displayClocks: clone(frame.clocks), undoUsed: this.state.undoUsed + 1, turnStartedAt: null });
-    await this.prepare();
+    await this.prepare({ restoring: true });
   }
 
   finish(result, reason) {

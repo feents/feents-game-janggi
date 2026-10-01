@@ -40,6 +40,7 @@ export default function App() {
   const undoRemaining = settings.undoCount === UNLIMITED_UNDO ? UNLIMITED_UNDO : Math.max(0, settings.undoCount - game.undoUsed);
   const phaseMessage = reviewing ? (reviewIndex === 0 ? '처음 배치예요. 다음 수를 눌러 대국을 돌아보세요.' : `${reviewIndex}수 · ${SIDES[game.records[reviewIndex - 1].side].label} ${game.records[reviewIndex - 1].label}`)
     : game.phase === 'preparing' ? '장기 엔진을 준비하고 있어요. 잠시만 기다려 주세요.'
+      : game.phase === 'restoring' ? '이전 수로 되돌리고 있어요.'
       : game.phase === 'engineError' ? '엔진 연결이 중단되어 시간을 멈췄어요.'
         : finished ? resultText(game)
           : game.phase === 'aiThinking' ? 'AI가 다음 수를 생각하고 있어요.'
