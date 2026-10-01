@@ -91,7 +91,7 @@ legend { padding: 0; }
 .player-clock > span:last-child { font-size: 10px; color: var(--muted); }
 /* 플레이어 정보와 버튼을 뺀 실제 영역에 맞춰 판의 비율을 유지하며 확대한다. */
 .board-surface { container-type: size; min-width: 0; min-height: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: #f5f7f7; padding: 8px; display: flex; align-items: center; justify-content: center; }
-.janggi-board { display: block; width: min(100cqw, calc(100cqh * 464 / 508)); height: auto; border-radius: 10px; }
+.janggi-board { display: block; width: min(100cqw, calc(100cqh * 464 / 508)); height: auto; border-radius: 10px; touch-action: manipulation; }
 .board-frame { fill: #b68a54; stroke: #966f42; stroke-width: 1; }
 .board-wood { fill: #e6c797; stroke: #f1d7af; stroke-width: 1; }
 .wood-grain { fill: none; stroke: #a77940; stroke-width: .75; opacity: .12; }
@@ -132,6 +132,11 @@ legend { padding: 0; }
 .welcome-card h1 { font-size: 27px; font-weight: 700; letter-spacing: -.04em; line-height: 1.3; }
 .welcome-card p { margin-top: 14px; color: var(--muted); font-size: 13px; line-height: 1.8; }
 .welcome-card .button { margin-top: 28px; width: 100%; }
+.loading-card { border-radius: 14px; box-shadow: none; }
+.loading-card h1 { font-size: 22px; }
+.loading-progress { height: 4px; margin-top: 28px; overflow: hidden; border-radius: 4px; background: var(--border); }
+.loading-progress span { display: block; width: 35%; height: 100%; background: var(--teal-dark); animation: loading-progress 1.2s ease-in-out infinite alternate; }
+@keyframes loading-progress { from { transform: translateX(0); } to { transform: translateX(186%); } }
 
 .new-game-dialog { width: min(740px, calc(100% - 40px)); max-width: none; max-height: calc(100dvh - 48px); padding: 0; margin: auto; border: 1px solid var(--border); border-radius: 20px; color: var(--ink); background: #fff; box-shadow: 4px 6px 14px rgb(11 18 32 / 12%); overflow: hidden; }
 .new-game-dialog::backdrop { background: rgb(11 18 32 / 48%); }
@@ -274,10 +279,11 @@ legend { padding: 0; }
 }
 
 /* 실제 대국: 판의 비율과 기물 크기를 유지하면서 선택·최근 수를 표시한다. */
-.board-hitbox { fill: transparent; stroke: transparent; stroke-width: 2; cursor: pointer; }
+.board-hitbox { fill: transparent; stroke: none; pointer-events: all; cursor: pointer; }
 .board-input [aria-disabled='true'] .board-hitbox { cursor: default; }
 .board-input [role='button']:focus { outline: none; }
-.board-input [role='button']:focus-visible .board-hitbox { stroke: #007e6c; }
+.board-focus { fill: none; stroke: #007e6c; stroke-width: 2; opacity: 0; pointer-events: none; }
+.board-input [role='button']:focus-visible .board-focus { opacity: 1; }
 .board-input [aria-disabled='false']:hover .board-hitbox { fill: rgb(255 255 255 / 12%); }
 .selected-ring { fill: none; stroke: #008571; stroke-width: 3; pointer-events: none; }
 .checked-ring { fill: none; stroke: #bd3831; stroke-width: 3; pointer-events: none; }

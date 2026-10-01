@@ -5,27 +5,92 @@ import { INITIAL_SETTINGS } from '../src/settings.js';
 import { ffish } from './helpers/rules.js';
 
 const flush = () => new Promise(resolve=>setImmediate(resolve));
-function harness() {
+function harness({ deferInit = false } = {}) {
   let time=0;
-  const searches=[], engines=[];
+  const searches=[], engines=[], initializations=[];
   const createEngine=kind=>{
     let board;
+    const initialized=value=>deferInit
+      ? new Promise((resolve,reject)=>initializations.push({resolve:()=>resolve(value),reject,engine}))
+      : Promise.resolve(value);
     const engine={kind, closed:false,
       request(type,payload) {
         if(kind==='ai') {
-          if(type==='init') return Promise.resolve(true);
+          if(type==='init') return initialized(true);
           return new Promise((resolve,reject)=>searches.push({resolve,reject,payload,engine}));
         }
         if(type==='init') {board=new ffish.Board(payload.variant,payload.fen);for(const m of payload.moves)assert.ok(board.push(m));}
         else assert.ok(board.push(payload.move));
-        return Promise.resolve({fen:board.fen(),turn:board.turn()?'cho':'han',legalMoves:board.result()==='*'?board.legalMoves().split(' '):[],check:board.isCheck(),bikjang:board.isBikjang(),result:board.result(),reason:board.terminationReason()});
+        const position={fen:board.fen(),turn:board.turn()?'cho':'han',legalMoves:board.result()==='*'?board.legalMoves().split(' '):[],check:board.isCheck(),bikjang:board.isBikjang(),result:board.result(),reason:board.terminationReason()};
+        return type==='init' ? initialized(position) : Promise.resolve(position);
       },
       destroy(){this.closed=true;board?.delete();board=undefined;}
     };engines.push(engine);return engine;
   };
   const game=new GameController({createEngine,now:()=>time});
-  return {game,searches,engines,advance:ms=>{time+=ms;game.tick();}};
+  return {game,searches,engines,initializations,advance:ms=>{time+=ms;game.tick();}};
 }
+
+test('두 엔진이 모두 준비될 때까지 시간을 멈추고 준비 직후 첫 착수를 허용한다',async()=>{
+  for(const first of ['rules','ai']) {
+    const h=harness({deferInit:true});try {
+      const starting=h.game.start(INITIAL_SETTINGS);
+      assert.equal(h.game.state.phase,'preparing');
+      assert.equal(h.game.state.turnStartedAt,null);
+      assert.equal(await h.game.makeMove('a4a5'),false);
+      h.initializations.find(init=>init.engine.kind===first).resolve();await flush();
+      h.advance(60_000);
+      assert.equal(h.game.state.phase,'preparing');
+      assert.equal(h.game.state.displayClocks.cho.mainMs,300000);
+      assert.equal(h.searches.length,0);
+      h.initializations.find(init=>init.engine.kind!==first).resolve();await starting;
+      assert.equal(h.game.state.phase,'humanTurn');
+      assert.equal(h.game.state.turnStartedAt,60_000);
+      assert.equal(await h.game.makeMove('a4a5'),true);
+      assert.deepEqual(h.game.state.moves,['a4a5']);
+      assert.equal(h.game.state.clocks.cho.mainMs,300000);
+    }finally{h.game.destroy();}
+  }
+});
+test('한 선택 시 엔진 준비가 끝난 뒤에만 AI 선공을 시작한다',async()=>{
+  const h=harness({deferInit:true});try {
+    const starting=h.game.start({...INITIAL_SETTINGS,playerSide:'han'});
+    h.initializations[1].resolve();await flush();h.advance(60_000);
+    assert.equal(h.game.state.phase,'preparing');assert.equal(h.searches.length,0);
+    h.initializations[0].resolve();await starting;
+    assert.equal(h.game.state.phase,'aiThinking');assert.equal(h.searches.length,1);
+    assert.equal(h.game.state.turnStartedAt,60_000);
+    h.searches[0].resolve('a4a5');await flush();
+    assert.equal(h.game.state.phase,'humanTurn');
+    assert.equal(await h.game.makeMove('a7a6'),true);
+  }finally{h.game.destroy();}
+});
+test('초기화 실패는 준비 상태를 끝내고 재시도 후 첫 수를 둘 수 있다',async()=>{
+  const h=harness({deferInit:true});try {
+    const starting=h.game.start(INITIAL_SETTINGS);
+    h.initializations[1].reject(new Error('초기화 실패'));await starting;
+    assert.equal(h.game.state.phase,'engineError');assert.equal(h.game.state.error,'초기화 실패');
+    assert.ok(h.engines.every(engine=>engine.closed));
+    const retry=h.game.prepare();
+    h.initializations[0].resolve();await flush();
+    assert.equal(h.game.state.phase,'preparing');
+    h.initializations[2].resolve();h.initializations[3].resolve();await retry;
+    assert.equal(h.game.state.error,'');assert.equal(h.game.state.phase,'humanTurn');
+    assert.equal(await h.game.makeMove('a4a5'),true);
+  }finally{h.game.destroy();}
+});
+test('새 대국 준비 중 이전 대국의 늦은 초기화 응답을 무시한다',async()=>{
+  const h=harness({deferInit:true});try {
+    const previous=h.game.start(INITIAL_SETTINGS);
+    const current=h.game.start({...INITIAL_SETTINGS,playerSide:'han'});
+    h.initializations[0].resolve();h.initializations[1].resolve();await previous;
+    assert.equal(h.game.state.gameId,2);assert.equal(h.game.state.phase,'preparing');
+    assert.equal(h.searches.length,0);
+    h.initializations[2].resolve();h.initializations[3].resolve();await current;
+    assert.equal(h.game.state.phase,'aiThinking');assert.equal(h.searches.length,1);
+    assert.equal(h.game.state.settings.playerSide,'han');
+  }finally{h.game.destroy();}
+});
 
 test('초 선택은 사용자 선공, 한 선택은 AI 선공이며 첫 사용자 수 전에는 무를 수 없다',async()=>{
   for(const playerSide of ['cho','han']) {

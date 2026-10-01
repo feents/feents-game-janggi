@@ -21,7 +21,7 @@ export default function App() {
   const [resultDismissed, setResultDismissed] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(null);
   const [playing, setPlaying] = useState(false);
-  const boardRef = useRef(null), startButtonRef = useRef(null), recordListRef = useRef(null);
+  const boardRef = useRef(null), startButtonRef = useRef(null), loadingRef = useRef(null), recordListRef = useRef(null);
   const { settings } = game;
   const reviewing = reviewIndex !== null && game.phase === 'finished';
   const position = reviewing ? game.history[Math.min(reviewIndex, game.moves.length)] : game;
@@ -31,6 +31,8 @@ export default function App() {
   const finalScores = calculateMaterialScores(game.pieces);
   const finished = game.phase === 'finished';
   const waiting = game.phase === 'idle';
+  const preparing = game.phase === 'preparing';
+  const blocked = waiting || preparing;
   const humanTurn = game.phase === 'humanTurn' && !reviewing;
   const showResult = finished && !resultDismissed && !isSettingUp && !reviewing;
   const destinations = selected && humanTurn ? game.legalMoves.map(parseMove).filter(move => move.from === selected && !move.pass).map(move => move.to) : [];
@@ -56,8 +58,8 @@ export default function App() {
   }, [controller]);
   useEffect(() => { setSelected(null); setActionMessage(''); }, [game.fen, game.phase, reviewIndex]);
   useEffect(() => {
-    if (!isSettingUp && !showResult) (waiting ? startButtonRef : boardRef).current?.focus();
-  }, [isSettingUp, showResult, waiting]);
+    if (!isSettingUp && !showResult) (waiting ? startButtonRef : preparing ? loadingRef : boardRef).current?.focus();
+  }, [isSettingUp, showResult, waiting, preparing]);
   useEffect(() => {
     const list = recordListRef.current;
     if (!list) return;
@@ -103,8 +105,8 @@ export default function App() {
 
   return <>
     <Header />
-    <main className={`main-content ${waiting ? 'main-content--waiting' : ''} ${reviewing ? 'main-content--review' : ''}`}>
-      <div className={`game-layout ${waiting ? 'game-layout--waiting' : ''}`} inert={waiting} aria-hidden={waiting}>
+    <main className={`main-content ${blocked ? 'main-content--waiting' : ''} ${reviewing ? 'main-content--review' : ''}`} aria-busy={preparing}>
+      <div className={`game-layout ${blocked ? 'game-layout--waiting' : ''}`} inert={blocked} aria-hidden={blocked}>
         <section key={game.gameId} ref={boardRef} className="board-panel" aria-label="대국 화면" tabIndex={-1}>
           <PlayerBar isAI side={oppositeSide(settings.playerSide)} settings={settings} score={scores[oppositeSide(settings.playerSide)]} clock={clocks[oppositeSide(settings.playerSide)]} active={!reviewing && game.phase === 'aiThinking'} captured={captured.filter(piece => piece.capturedBy === oppositeSide(settings.playerSide))} />
           <div className="board-surface"><JanggiBoard settings={settings} pieces={pieces} interactive={humanTurn} selected={selected} destinations={destinations} onSquare={selectSquare} lastMove={reviewing ? position.lastMove : game.moves.at(-1)} checkSide={position.check ? position.turn : null} /></div>
@@ -137,6 +139,11 @@ export default function App() {
         </div>
       </div>
       {waiting && <div className="welcome-overlay"><section className="welcome-card" aria-labelledby="welcome-title"><h1 id="welcome-title">장기, 한 수의 여유.</h1><p>진영과 상차림을 고르고,<br />나에게 맞는 AI와 한 판을 준비해 보세요.</p><button ref={startButtonRef} className="button button--primary" onClick={() => setIsSettingUp(true)}>새 게임 시작<ArrowRight size={18} /></button></section></div>}
+      {preparing && <div className="welcome-overlay"><section ref={loadingRef} className="welcome-card loading-card" tabIndex={-1} aria-labelledby="loading-title" aria-describedby="loading-description">
+        <h1 id="loading-title">대국을 준비하고 있어요</h1>
+        <p id="loading-description">잠시만 기다려 주세요.<br />준비가 끝나면 바로 시작할 수 있어요.</p>
+        <div className="loading-progress" role="progressbar" aria-label="대국 준비 중"><span /></div>
+      </section></div>}
     </main>
     {showResult && <ResultDialog game={game} scores={finalScores} onClose={() => setResultDismissed(true)} onReview={() => seek(0)} onNewGame={() => { setResultDismissed(true); setIsSettingUp(true); }} />}
     {isSettingUp && <NewGameDialog settings={settings} onClose={() => setIsSettingUp(false)} onStart={startGame} />}

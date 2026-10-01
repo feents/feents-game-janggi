@@ -1,6 +1,7 @@
 import { Bot, UserRound } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { pieceGlyph, pieceName } from '../board-position.js';
+import { BOARD_COLUMNS, BOARD_ROWS, cellHitbox } from '../board-geometry.js';
 import { JANGGI_GLYPHS } from '../assets/janggi-glyphs.js';
 import { SIDES } from '../settings.js';
 import { parseMove, screenToSquare, squareToScreen } from '../game/position-codec.js';
@@ -36,8 +37,8 @@ export function JanggiBoard({ settings, pieces, interactive = false, selected, d
   const grainId = `${id}-wood-grain`;
   const titleId = `${id}-board-title`;
   const descriptionId = `${id}-board-description`;
-  const columns = Array.from({ length: 9 }, (_, index) => 40 + index * 48);
-  const rows = Array.from({ length: 10 }, (_, index) => 38 + index * 48);
+  const columns = BOARD_COLUMNS;
+  const rows = BOARD_ROWS;
   const marks = [[1, 2], [7, 2], [0, 3], [2, 3], [4, 3], [6, 3], [8, 3],
     [0, 6], [2, 6], [4, 6], [6, 6], [8, 6], [1, 7], [7, 7]];
   const previous = lastMove ? parseMove(lastMove) : null;
@@ -52,35 +53,8 @@ export function JanggiBoard({ settings, pieces, interactive = false, selected, d
     svgRef.current.querySelector(`[data-square="${screenToSquare(next.column, next.row, settings.playerSide)}"]`)?.focus();
   }
 
-  function handleDestinationClick(event) {
-    if (!interactive || !destinations.length || event.detail === 0) return;
-    const clickedSquare = event.target.closest('[data-square]')?.getAttribute('data-square');
-    // 말이 있는 칸의 기존 선택·잡기 영역을 먼저 존중한다.
-    if (pieces.some(piece => screenToSquare(piece.column, piece.row, settings.playerSide) === clickedSquare)) return;
-    const matrix = svgRef.current.getScreenCTM();
-    if (!matrix) return;
-    const point = svgRef.current.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const { x, y } = point.matrixTransform(matrix.inverse());
-    let nearest = null;
-    for (const square of destinations) {
-      const cell = squareToScreen(square, settings.playerSide);
-      if (pieces.some(piece => piece.column === cell.column && piece.row === cell.row)) continue;
-      const dx = x - columns[cell.column], dy = y - rows[cell.row];
-      // 표시 점은 그대로 두고 기존 46×46보다 넓은 60×60 영역을 받는다.
-      if (Math.abs(dx) > 30 || Math.abs(dy) > 30) continue;
-      const distance = dx * dx + dy * dy;
-      if (!nearest || distance < nearest.distance) nearest = { square, cell, distance };
-    }
-    if (!nearest) return;
-    event.stopPropagation();
-    setFocusCell(nearest.cell);
-    onSquare?.(nearest.square);
-  }
-
   return (
-    <svg ref={svgRef} className="janggi-board" viewBox="0 0 464 508" role="group" aria-labelledby={titleId} aria-describedby={descriptionId} onClickCapture={handleDestinationClick}>
+    <svg ref={svgRef} className="janggi-board" viewBox="0 0 464 508" role="group" aria-labelledby={titleId} aria-describedby={descriptionId}>
       <title id={titleId}>말이 배치된 나무 장기판</title>
       <metadata>장기 글자 도안: Kadagaden / chess-pieces, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). 글자만 추출하고 크기와 색상 변경. 출처: https://github.com/Kadagaden/chess-pieces. 상세: /licenses/janggi-glyphs.txt</metadata>
       <desc id={descriptionId}>9열 10행의 장기판이에요. 아래는 내 {SIDES[settings.playerSide].label}예요. 방향키로 교차점을 이동하고 Enter 또는 Space로 말과 목적지를 선택해요. 남은 말 {pieces.length}개.</desc>
@@ -115,8 +89,10 @@ export function JanggiBoard({ settings, pieces, interactive = false, selected, d
         const piece = pieces.find((item) => item.column === column && item.row === row);
         const target = destinations.includes(square);
         const checked = piece?.type === 'general' && piece.side === checkSide;
+        const hitbox = cellHitbox(column, row);
         return <g key={square} role="button" data-square={square} tabIndex={focusCell.column === column && focusCell.row === row ? 0 : -1} aria-disabled={!interactive} aria-pressed={selected === square} aria-label={`${square} ${piece ? `${SIDES[piece.side].short} ${pieceName(piece)}` : '빈자리'}${target ? ', 이동 가능' : ''}${checked ? ', 장군' : ''}`} onClick={() => { setFocusCell({ column, row }); if (interactive) onSquare?.(square); }} onKeyDown={(event) => handleKey(event, column, row, square)}>
-          <rect className="board-hitbox" x={x - 23} y={y - 23} width="46" height="46" rx="8" />
+          <rect className="board-hitbox" {...hitbox} />
+          <rect className="board-focus" x={hitbox.x + 2} y={hitbox.y + 2} width={hitbox.width - 4} height={hitbox.height - 4} rx="6" />
           {(selected === square || checked) && <circle className={checked ? 'checked-ring' : 'selected-ring'} cx={x} cy={y} r={piece?.type === 'general' ? 28 : 23} />}
           {target && <circle className={piece ? 'capture-target' : 'move-target'} cx={x} cy={y} r={piece ? 22 : 7} />}
         </g>;
