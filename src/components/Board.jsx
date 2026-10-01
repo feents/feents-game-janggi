@@ -52,8 +52,35 @@ export function JanggiBoard({ settings, pieces, interactive = false, selected, d
     svgRef.current.querySelector(`[data-square="${screenToSquare(next.column, next.row, settings.playerSide)}"]`)?.focus();
   }
 
+  function handleDestinationClick(event) {
+    if (!interactive || !destinations.length || event.detail === 0) return;
+    const clickedSquare = event.target.closest('[data-square]')?.getAttribute('data-square');
+    // 말이 있는 칸의 기존 선택·잡기 영역을 먼저 존중한다.
+    if (pieces.some(piece => screenToSquare(piece.column, piece.row, settings.playerSide) === clickedSquare)) return;
+    const matrix = svgRef.current.getScreenCTM();
+    if (!matrix) return;
+    const point = svgRef.current.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const { x, y } = point.matrixTransform(matrix.inverse());
+    let nearest = null;
+    for (const square of destinations) {
+      const cell = squareToScreen(square, settings.playerSide);
+      if (pieces.some(piece => piece.column === cell.column && piece.row === cell.row)) continue;
+      const dx = x - columns[cell.column], dy = y - rows[cell.row];
+      // 표시 점은 그대로 두고 기존 46×46보다 넓은 60×60 영역을 받는다.
+      if (Math.abs(dx) > 30 || Math.abs(dy) > 30) continue;
+      const distance = dx * dx + dy * dy;
+      if (!nearest || distance < nearest.distance) nearest = { square, cell, distance };
+    }
+    if (!nearest) return;
+    event.stopPropagation();
+    setFocusCell(nearest.cell);
+    onSquare?.(nearest.square);
+  }
+
   return (
-    <svg ref={svgRef} className="janggi-board" viewBox="0 0 464 508" role="group" aria-labelledby={titleId} aria-describedby={descriptionId}>
+    <svg ref={svgRef} className="janggi-board" viewBox="0 0 464 508" role="group" aria-labelledby={titleId} aria-describedby={descriptionId} onClickCapture={handleDestinationClick}>
       <title id={titleId}>말이 배치된 나무 장기판</title>
       <metadata>장기 글자 도안: Kadagaden / chess-pieces, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). 글자만 추출하고 크기와 색상 변경. 출처: https://github.com/Kadagaden/chess-pieces. 상세: /licenses/janggi-glyphs.txt</metadata>
       <desc id={descriptionId}>9열 10행의 장기판이에요. 아래는 내 {SIDES[settings.playerSide].label}예요. 방향키로 교차점을 이동하고 Enter 또는 Space로 말과 목적지를 선택해요. 남은 말 {pieces.length}개.</desc>
