@@ -3,6 +3,7 @@ const DATES = [
   { date: '20260929', label: '2026년 09월 29일' },
   { date: '20260930', label: '2026년 09월 30일' },
   { date: '20261001', label: '2026년 10월 1일' },
+  { date: '20261002', label: '2026년 10월 2일' },
 ];
 
 let dateAreaEvents;

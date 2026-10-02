@@ -6,7 +6,7 @@ React + Vite와 Fairy-Stockfish WASM으로 만든 브라우저 AI 장기입니�
 
 ## 실행과 배포
 
-Node.js 22.12 이상에서 실행합니다. 엔진 바이너리는 저장소에 포함되어 있어 일반 실행·배포 때 Emscripten을 설치할 필요가 없습니다.
+Node.js 22.12 이상에서 실행합니다. 엔진 바이너리와 장기용 NNUE 모델은 저장소에 포함되어 있어 일반 실행·배포 때 Emscripten을 설치할 필요가 없습니다.
 
 ```sh
 npm ci
@@ -21,7 +21,7 @@ npm run build
 npm run preview
 ```
 
-`dist/`를 nginx 웹 루트에 복사하고 `deploy/nginx.conf`를 적용합니다. 운영 주소는 **HTTPS**로 제공해야 합니다. 예시 nginx 설정은 TLS를 종료하는 프록시 뒤에서 사용하는 HTTP 정적 서버 블록이므로, 공개 서비스에서는 앞단 HTTPS 또는 nginx TLS 설정을 추가합니다. 문서와 Worker 응답에 `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`를 유지하고 `.wasm`은 `application/wasm`으로 제공합니다. 엔진 요청을 HTML로 fallback하지 않습니다.
+`dist/`를 nginx 웹 루트에 복사하고 `deploy/nginx.conf`를 적용합니다. 운영 주소는 **HTTPS**로 제공해야 합니다. 예시 nginx 설정은 TLS를 종료하는 프록시 뒤에서 사용하는 HTTP 정적 서버 블록이므로, 공개 서비스에서는 앞단 HTTPS 또는 nginx TLS 설정을 추가합니다. 문서와 Worker 응답에 `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`를 유지하고 `.wasm`은 `application/wasm`으로 제공합니다. `.nnue`와 `nnue.json`을 포함한 엔진 요청을 HTML로 fallback하지 않습니다. nginx 예시는 `.nnue`를 `application/octet-stream`으로 제공하고 내용 해시가 포함된 모델 파일명을 기준으로 캐시합니다.
 
 GitHub Actions는 `scripts/deploy.sh`에서 SSH와 `rsync --delete --delete-delay --delay-updates`로 `dist/`의 내용을 동기화합니다. 빌드에서 사라진 파일과 이전 해시 번들은 전송 후 `DEPLOY_PATH`에서 삭제됩니다. 이 경로는 기존에 존재하고 쓰기 가능한 장기 앱 전용 폴더여야 하며, 내부 파일이 빌드 내용과 같도록 정리됩니다. 서버에는 rsync가 설치되어 있어야 하고, Actions 실행 환경에는 workflow가 rsync와 OpenSSH를 설치합니다. 기존 `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`, `DEPLOY_PATH` Secrets와 선택적인 `SERVER_PORT`(기본 22)를 사용합니다.
 
@@ -70,9 +70,13 @@ WASM SIMD, Worker, SharedArrayBuffer를 지원하는 최신 브라우저가 필�
 
 `public/engine/ffish.js·wasm`은 규칙 판정용, `stockfish.js·wasm`은 AI 탐색용입니다. 같은 소스·커스텀 규칙 패치를 적용한 8개 변형을 사용하고, AI에는 초기 FEN과 전체 기보를 전달합니다. 반환한 수는 규칙 엔진의 합법 수 목록으로 다시 확인합니다. 규칙 Worker와 AI Worker를 분리해 탐색 중에도 UI가 응답합니다.
 
-AI는 Classical 평가를 사용합니다(`Use NNUE=false`). 추가 NNUE 모델 다운로드 없이 실행합니다. 탐색 Threads는 1, Hash는 16 MiB이며 pthread 런타임 때문에 공유 메모리와 격리 헤더가 필요합니다. 선언한 WASM 초기 메모리는 AI 128 MiB, 규칙 32 MiB이며 실제 전체 메모리 소비와 같지는 않습니다.
+18급부터 9단까지 모든 AI 난이도에서 저장소에 포함된 `janggi-9991472750de.nnue` 모델(11,261,920바이트, 약 10.74 MiB)로 NNUE 평가를 사용합니다(`Use NNUE=true`). 난이도는 기존처럼 Skill Level과 탐색 시간으로 조절합니다.
 
-고정 upstream 커밋, Emscripten 버전, 파일 크기·SHA-256은 `engine/manifest.json`에 있습니다. 규칙 변경은 `engine/feents-rules.patch`, 최신 Emscripten의 메시지·출력 연결 보정은 `scripts/patch-engine-glue.mjs`에 보관합니다.
+Worker는 자신의 URL을 기준으로 `nnue.json`과 모델을 요청하고 크기·SHA-256을 확인한 뒤 엔진의 가상 파일 시스템에 넣어 `EvalFile`로 불러옵니다. 모델은 앱과 같은 출처에서 제공하며 외부 모델 서비스에 의존하지 않고 캐시를 재사용합니다.
+
+NNUE 활성화를 확인한 뒤 대국 준비를 완료하고 모델이 누락되거나 손상되면 Classical 평가로 대체하지 않고 오류를 표시합니다. 최초 모델 다운로드를 위해 AI 초기화는 최대 60초를 기다리고, 취소 시 진행 중인 다운로드도 중단합니다. 탐색 Threads는 1, Hash는 16 MiB이며 pthread 런타임 때문에 공유 메모리와 격리 헤더가 필요합니다. 선언한 WASM 초기 메모리는 AI 128 MiB, 규칙 32 MiB이며 실제 전체 메모리 소비와 같지는 않습니다.
+
+고정 upstream 커밋, Emscripten 버전, 모델 출처, 파일 크기·SHA-256은 `engine/manifest.json`에 있습니다. 모델 정보는 `public/engine/nnue.json`에서 관리하며 8개 FEENTS 규칙 변형 모두 `janggi` NNUE 별칭을 사용합니다. 규칙 변경은 `engine/feents-rules.patch`, 최신 Emscripten의 메시지·출력 연결 보정은 `scripts/patch-engine-glue.mjs`에 보관합니다.
 
 Emscripten 3.1.74 환경을 활성화한 뒤 다음 명령으로 두 엔진을 함께 재빌드할 수 있습니다. GitHub 소스 다운로드를 위한 네트워크와 make·patch·curl·Node.js가 필요합니다.
 
@@ -83,16 +87,17 @@ npm test
 npm run build
 ```
 
-빌드 스크립트는 임시 디렉터리에 고정 소스를 내려받아 패치하고, 두 엔진의 빌드가 모두 성공했을 때 자산과 manifest를 교체합니다. 일반 앱 빌드에서는 이 절차를 실행하지 않습니다.
+빌드 스크립트는 포함된 모델을 검증하고 임시 디렉터리에 고정 소스를 내려받아 `nnue=yes`, `embedded_nnue=no`로 빌드합니다. `load_net=`는 사용하지 않는 기본 체스 네트워크의 다운로드를 생략합니다. 이 upstream 버전에서 `NNUE_EMBEDDING_OFF`는 기본 모델 내장을 끄며 NNUE 평가 연산을 제거하지 않습니다. 패치 적용 후 두 엔진의 빌드가 모두 성공했을 때 자산과 manifest를 교체합니다. 일반 앱 빌드에서는 이 절차를 실행하지 않습니다.
 
 ## 검증 범위
 
-`npm test`는 총 99개 테스트로 기존 상차림·점수 검증과 실제 WASM 규칙·AI 테스트, 시간·대국 상태·터치 영역·입력·배포 테스트를 실행합니다. 배포 테스트에는 Bash, OpenSSH, rsync가 필요합니다. 주요 검증은 다음과 같습니다.
+`npm test`는 총 104개 테스트로 기존 상차림·점수 검증과 실제 WASM 규칙·AI 테스트, 시간·대국 상태·터치 영역·입력·배포 테스트를 실행합니다. 배포 테스트에는 Bash, OpenSSH, rsync가 필요합니다. 주요 검증은 다음과 같습니다.
 
 - 진영·상차림·규칙의 256개 초기 조합, 좌표/FEN 왕복, 모든 기물의 이동·막힘·잡기·궁성 제약.
 - 빅장 해소/수용/끔, 연속 한수쉼, 기물 10↔9점 경계와 덤, 외통 우선, 반복 금지와 이력 복원.
-- 27개 난이도 및 8개 규칙의 실제 AI 합법 착수, 반복 직전 탐색, 초기 배치부터 종료까지 AI 대국.
-- 실제 로컬 rsync 갱신·삭제, 잘못된 배포 설정·불완전한 빌드·심볼릭 링크 차단, SSH·전송 실패 처리와 임시 키 정리. 배포 테스트는 임시 폴더만 사용하고 운영 서버에 접속하지 않습니다.
+- 27개 난이도 및 8개 규칙의 NNUE 활성화와 실제 AI 합법 착수, 반복 직전 탐색, 초기 배치부터 종료까지 AI 대국.
+- 루트·하위 경로 URL에서 실제 Worker의 NNUE 준비와 탐색, 모델 누락·잘림·손상 및 Classical 대체 거부, 종료 시 다운로드 중단을 Node에서 서버·브라우저 실행 없이 검증합니다.
+- 실제 로컬 rsync 갱신·삭제, 잘못된 배포 설정·NNUE 모델 누락 및 손상을 포함한 불완전한 빌드·심볼릭 링크 차단, SSH·전송 실패 처리와 임시 키 정리. 배포 테스트는 임시 폴더만 사용하고 운영 서버에 접속하지 않습니다.
 - 초읽기 경계·지연 정산, 선후공, 무르기 0/유한/무제한, 탐색 취소·기권·새 게임의 늦은 응답, 오류 복구, 페이지 이탈.
 - 엔진 초기화 지연·실패·재시도·이전 대국의 늦은 응답, 준비 시간 제외와 준비 직후 첫 착수. 준비 중에는 메인 영역의 블러와 로딩 표시를 유지합니다.
 - 무르기 복원 중에는 로딩 모달 없이 판을 유지하고 착수·중복 무르기와 시계를 잠시 멈춥니다. 복원 실패·페이지 이탈·새 대국 시작 후 이전 복원 응답 무시도 검증합니다.
@@ -108,5 +113,7 @@ npm run build
 장기 진영·말·상차림은 [PyChess 장기 설명](https://www.pychess.org/variants/janggi)을 참고했습니다. 나무 장기판과 팔각형 말 몸체는 프로젝트에서 직접 작성한 SVG입니다.
 
 말의 글자 도안은 [Kadagaden의 chess-pieces](https://github.com/Kadagaden/chess-pieces/tree/b035b0cc6a68e9fb99c872c8fe073c3ae3eba8a0/janggi_kakao_janggi_style_white)를 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)으로 사용합니다. 원본 14개 말에서 글자 획만 추출하고, 효과를 제거한 뒤 윤곽에 맞는 viewBox·크기·색상을 적용했습니다. 도안 데이터는 `src/assets/janggi-glyphs.js`, 저작자와 변경 내역 및 라이선스 전문은 `public/licenses/`에 있으며 빌드에도 포함됩니다. 실행 중에는 외부 자산을 요청하지 않습니다.
+
+장기용 NNUE 모델은 [Fairy-Stockfish-NNUE](https://github.com/fairy-stockfish/Fairy-Stockfish-NNUE/tree/09209ba8bc970c9909f63c153981f065b56a3784)에서 제공하는 belzedar_의 모델을 수정 없이 사용합니다. 상위 저장소의 GPL v3에 따라 재배포하며 출처 고지와 라이선스 전문은 `public/licenses/janggi-nnue.txt`와 `janggi-nnue-COPYING.txt`에 포함되어 운영 빌드에도 복사됩니다.
 
 로컬 작업 결과는 `result_yyyyMMdd.html`에서 날짜별로 확인할 수 있어요. 결과 HTML, `prompt.md`, `AGENTS.md`, `docs/`는 내부 작업 기록으로 Git에서 제외해요.

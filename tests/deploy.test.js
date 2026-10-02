@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,7 @@ import test from 'node:test';
 const script = fileURLToPath(new URL('../scripts/deploy.sh', import.meta.url));
 const realRsync = execFileSync('which', ['rsync'], { encoding: 'utf8' }).trim();
 const realSsh = execFileSync('which', ['ssh'], { encoding: 'utf8' }).trim();
+const nnue = JSON.parse(readFileSync(new URL('../public/engine/nnue.json', import.meta.url), 'utf8'));
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'feents-deploy-test-'));
@@ -16,6 +17,9 @@ function fixture(t) {
   for (const folder of ['bin', 'dist/assets', 'dist/engine', 'target/assets', 'runner temp']) mkdirSync(join(root, folder), { recursive: true });
   for (const file of ['index.html', 'engine/stockfish.wasm', 'engine/ffish.wasm', 'og_image.png', 'assets/new.js', 'assets/new.css', '.public-marker']) {
     writeFileSync(join(root, 'dist', file), `new build: ${file}`);
+  }
+  for (const file of ['nnue.json', nnue.file]) {
+    copyFileSync(new URL(`../public/engine/${file}`, import.meta.url), join(root, 'dist/engine', file));
   }
   writeFileSync(join(root, 'target/index.html'), 'previous page');
   writeFileSync(join(root, 'target/logo-mark.svg'), 'previous public logo');
@@ -93,6 +97,8 @@ test('배포는 새 파일·숨김 파일을 반영하고 삭제한 파일·이�
   for (const file of ['assets/new.js', 'assets/new.css', 'engine/stockfish.wasm', 'engine/ffish.wasm', 'og_image.png', '.public-marker']) {
     assert.equal(readFileSync(join(root, 'target', file), 'utf8'), `new build: ${file}`);
   }
+  assert.deepEqual(readFileSync(join(root, 'target/engine', nnue.file)), readFileSync(join(root, 'dist/engine', nnue.file)));
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'target/engine/nnue.json'), 'utf8')), nnue);
   assert.ok(!existsSync(join(root, 'target/logo-mark.svg')));
   assert.ok(!existsSync(join(root, 'target/assets/old.js')));
   assert.equal(readFileSync(join(root, 'outside.txt'), 'utf8'), 'outside the deployment directory');
@@ -120,6 +126,19 @@ test('누락되거나 비어 있는 빌드 파일은 원격 파일 삭제 전에
   assert.notEqual(run().status, 0);
   writeFileSync(index, 'new page');
   unlinkSync(join(root, 'dist/assets/new.js'));
+  assert.notEqual(run().status, 0);
+  writeFileSync(join(root, 'dist/assets/new.js'), 'new bundle');
+  unlinkSync(join(root, 'dist/engine', nnue.file));
+  assert.notEqual(run().status, 0);
+  assert.ok(!existsSync(join(root, 'ssh-record')));
+  unchanged(root);
+});
+
+test('손상된 NNUE 모델은 운영 파일을 정리하거나 SSH에 연결하기 전에 거부한다', t => {
+  const { root, run } = fixture(t);
+  const model = readFileSync(join(root, 'dist/engine', nnue.file));
+  model[model.length - 1] ^= 1;
+  writeFileSync(join(root, 'dist/engine', nnue.file), model);
   assert.notEqual(run().status, 0);
   assert.ok(!existsSync(join(root, 'ssh-record')));
   unchanged(root);

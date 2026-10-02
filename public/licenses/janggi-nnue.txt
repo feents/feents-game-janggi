@@ -1,0 +1,8 @@
+Janggi NNUE network: janggi-9991472750de.nnue
+Author: belzedar_ (as credited in the Fairy-Stockfish network list)
+Source: https://github.com/fairy-stockfish/Fairy-Stockfish-NNUE/tree/09209ba8bc970c9909f63c153981f065b56a3784
+Original network list: https://fairy-stockfish.github.io/nnue/
+SHA-256: 9991472750deab2ce1723b9d4040577bac9579b0a20457c4c86659fce03439e9
+License: GNU General Public License version 3, as provided by the upstream repository.
+Full license: janggi-nnue-COPYING.txt
+The network is redistributed unmodified. FEENTS loads it as an external model for its Janggi variants.

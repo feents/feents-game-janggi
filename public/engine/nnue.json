@@ -1,0 +1,10 @@
+{
+  "file": "janggi-9991472750de.nnue",
+  "bytes": 11261920,
+  "sha256": "9991472750deab2ce1723b9d4040577bac9579b0a20457c4c86659fce03439e9",
+  "source": "https://raw.githubusercontent.com/fairy-stockfish/Fairy-Stockfish-NNUE/09209ba8bc970c9909f63c153981f065b56a3784/janggi-9991472750de.nnue",
+  "sourceCommit": "09209ba8bc970c9909f63c153981f065b56a3784",
+  "author": "belzedar_",
+  "license": "GPL-3.0",
+  "licenseFile": "../licenses/janggi-nnue-COPYING.txt"
+}

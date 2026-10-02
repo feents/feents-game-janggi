@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, copyFile, rm } from 'node:fs/promises';
+import { mkdtemp, copyFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -9,10 +9,11 @@ import { INITIAL_SETTINGS, AI_LEVELS } from '../src/settings.js';
 import { initialFen } from '../src/game/position-codec.js';
 import { difficultyProfile } from '../src/engine/difficulty.js';
 
-test('실제 AI WASM: 27단계·8규칙 탐색과 완결 대국에서 규칙 엔진과 일치', {timeout:90000}, async()=>{
+test('실제 NNUE AI WASM: 27단계·8규칙 탐색과 완결 대국에서 규칙 엔진과 일치', {timeout:90000}, async()=>{
   // 배포용 classic script를 Node CommonJS에서도 같은 pthread 경로로 실행한다.
   const dir=await mkdtemp(join(tmpdir(),'feents-ai-test-'));
-  let engine, waiter;
+  let engine, waiter, nnueActive = false;
+  const model = JSON.parse(await readFile(new URL('../public/engine/nnue.json', import.meta.url), 'utf8'));
   const command=text=>engine.postMessage(text);
   const until=(match,send)=>new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>{waiter=null;reject(new Error('AI 응답 시간 초과'));},15000);
@@ -21,17 +22,24 @@ test('실제 AI WASM: 27단계·8규칙 탐색과 완결 대국에서 규칙 엔
   const search=async(fen,history,time=15)=>{
     command(`position fen ${fen}${history.length?' moves '+history.join(' '):''}`);
     const line=await until(s=>s.startsWith('bestmove '),()=>command(`go movetime ${time}`));
+    assert.ok(nnueActive, '모든 탐색은 실제 NNUE 평가를 사용해야 해요.');
     return line.split(/\s+/)[1];
   };
   const init=async(variant,skill)=>{
-    for(const cmd of ['setoption name Use NNUE value false','setoption name Threads value 1','setoption name Hash value 16',`setoption name UCI_Variant value ${variant}`,`setoption name Skill Level value ${skill}`,'ucinewgame'])command(cmd);
+    nnueActive = false;
+    for(const cmd of ['setoption name Threads value 1','setoption name Hash value 16',`setoption name UCI_Variant value ${variant}`,`setoption name EvalFile value /${model.file}`,'setoption name Use NNUE value true',`setoption name Skill Level value ${skill}`,'ucinewgame'])command(cmd);
     await until(s=>s==='readyok',()=>command('isready'));
   };
   try {
     for(const file of ['stockfish.js','stockfish.wasm'])await copyFile(new URL(`../public/engine/${file}`,import.meta.url),join(dir,file));
     const factory=createRequire(import.meta.url)(join(dir,'stockfish.js'));
     engine=await factory();
-    engine.addMessageListener(output=>{for(const line of String(output).split('\n'))if(waiter?.match(line))waiter.resolve(line);});
+    engine.FS.writeFile(`/${model.file}`, await readFile(new URL(`../public/engine/${model.file}`, import.meta.url)));
+    engine.addMessageListener(output=>{for(const line of String(output).split('\n')){
+      if(line===`info string NNUE evaluation using /${model.file} enabled`)nnueActive=true;
+      if(line==='info string classical evaluation enabled')nnueActive=false;
+      if(waiter?.match(line))waiter.resolve(line);
+    }});
     await until(s=>s==='uciok',()=>command('uci'));
     const fen=initialFen(INITIAL_SETTINGS);
     const board=new ffish.Board('feents-b1-m0-r0',fen);

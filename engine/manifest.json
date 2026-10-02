@@ -2,7 +2,17 @@
   "source": "https://github.com/fairy-stockfish/fairy-stockfish.wasm",
   "commit": "4d4b39395955df4695f28887800f0836f9c4d37d",
   "emscripten": "3.1.74",
-  "evaluation": "classical (Use NNUE=false)",
+  "evaluation": "NNUE (Use NNUE=true, all difficulty levels)",
+  "nnue": {
+    "file": "janggi-9991472750de.nnue",
+    "bytes": 11261920,
+    "sha256": "9991472750deab2ce1723b9d4040577bac9579b0a20457c4c86659fce03439e9",
+    "source": "https://raw.githubusercontent.com/fairy-stockfish/Fairy-Stockfish-NNUE/09209ba8bc970c9909f63c153981f065b56a3784/janggi-9991472750de.nnue",
+    "sourceCommit": "09209ba8bc970c9909f63c153981f065b56a3784",
+    "author": "belzedar_",
+    "license": "GPL-3.0",
+    "licenseFile": "../licenses/janggi-nnue-COPYING.txt"
+  },
   "patch": "engine/feents-rules.patch",
   "glue": "scripts/patch-engine-glue.mjs",
   "ai": {
@@ -14,11 +24,11 @@
   "files": {
     "stockfish.js": {
       "bytes": 167054,
-      "sha256": "b0d021c21560c7e20e038675269c1d345c375eff4b2b272f39caf15bb9cb3c07"
+      "sha256": "930a0cfe115bb09d7d0c9e16cd9e9eb961d2033653f16efb81bbb24455840517"
     },
     "stockfish.wasm": {
       "bytes": 1584335,
-      "sha256": "1e19b0fd1e164531a7e206e72f2876e9a146d8632b3c601b7d9a0dc410f76e35"
+      "sha256": "6ff51b958d0c1f325f4ba4ba7d452d295120de5d11d3a925b1e3a3a37877c8bf"
     },
     "ffish.js": {
       "bytes": 104486,
@@ -26,7 +36,15 @@
     },
     "ffish.wasm": {
       "bytes": 890378,
-      "sha256": "a17515a6c00236ce1ce77528937baa00c066da4044a2656dcdac62c943aab27a"
+      "sha256": "ddb1e811e653f800984afa883dbfe056fac7a32149c401f1583bbebb4addf35c"
+    },
+    "nnue.json": {
+      "bytes": 461,
+      "sha256": "fb1483c15108c3eddae8b9d7d7bb6dcad704d710da968cb0fda2769f83341a1e"
+    },
+    "janggi-9991472750de.nnue": {
+      "bytes": 11261920,
+      "sha256": "9991472750deab2ce1723b9d4040577bac9579b0a20457c4c86659fce03439e9"
     }
   }
 }

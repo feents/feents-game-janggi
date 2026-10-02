@@ -23,7 +23,7 @@ export class EngineClient {
     this.pending.clear();
   }
 
-  request(type, payload = {}, timeoutMs = 20_000) {
+  request(type, payload = {}, timeoutMs = type === 'init' && this.kind === 'ai' ? 60_000 : 20_000) {
     if (this.closed) return Promise.reject(new Error('종료된 엔진이에요.'));
     if (this.failedError) return Promise.reject(this.failedError);
     const id = ++this.serial;

@@ -24,9 +24,11 @@ deploy_port="${SERVER_PORT:-22}"
   || fail 'SERVER_PORT must be an integer from 1 to 65535.'
 
 # 빈 빌드나 불완전한 빌드로 원격 웹 루트를 정리하지 않는다.
-for file in index.html engine/stockfish.wasm engine/ffish.wasm og_image.png; do
+for file in index.html engine/stockfish.wasm engine/ffish.wasm engine/nnue.json og_image.png; do
   [[ -s "dist/$file" ]] || fail 'The deployment build is missing a required file.'
 done
+node "$(dirname "${BASH_SOURCE[0]}")/engine-manifest.mjs" --verify-nnue "$PWD/dist/engine" \
+  || fail 'The deployment build is missing a valid Janggi NNUE model.'
 compgen -G 'dist/assets/*.js' >/dev/null && compgen -G 'dist/assets/*.css' >/dev/null \
   || fail 'The deployment build is missing its JavaScript or CSS bundles.'
 build_symlinks="$(find dist -type l -print -quit)"

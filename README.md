@@ -6,7 +6,7 @@ An AI janggi game that runs in the browser, built with React + Vite and Fairy-St
 
 ## Running and deploying
 
-Requires Node.js 22.12 or later. Engine binaries are included in the repository, so Emscripten is not needed for normal development or deployment.
+Requires Node.js 22.12 or later. Engine binaries and the Janggi NNUE model are included in the repository, so Emscripten is not needed for normal development or deployment.
 
 ```sh
 npm ci
@@ -21,7 +21,7 @@ npm run build
 npm run preview
 ```
 
-Copy `dist/` to the nginx web root and apply `deploy/nginx.conf`. Production must be served over **HTTPS**. The example nginx configuration is an HTTP static server block intended to sit behind a proxy that terminates TLS. For a public service, configure HTTPS at the proxy or add TLS configuration to nginx. Keep `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on document and Worker responses, and serve `.wasm` files as `application/wasm`. Engine requests must not fall back to HTML.
+Copy `dist/` to the nginx web root and apply `deploy/nginx.conf`. Production must be served over **HTTPS**. The example nginx configuration is an HTTP static server block intended to sit behind a proxy that terminates TLS. For a public service, configure HTTPS at the proxy or add TLS configuration to nginx. Keep `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on document and Worker responses, and serve `.wasm` files as `application/wasm`. Engine requests, including `.nnue` and `nnue.json`, must not fall back to HTML. The nginx example serves `.nnue` as `application/octet-stream` and caches the model by its content-hashed filename.
 
 GitHub Actions uses `scripts/deploy.sh` to sync the contents of `dist/` over SSH with `rsync --delete --delete-delay --delay-updates`. Files absent from the build, including old hashed bundles, are removed from `DEPLOY_PATH` after transfer. Use an existing writable directory dedicated to this app, since its contents are mirrored to the build. The server must have rsync installed; the workflow installs rsync and OpenSSH on its runner. Deployment uses the existing `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`, and `DEPLOY_PATH` Secrets, with optional `SERVER_PORT` (default 22).
 
@@ -70,9 +70,13 @@ Piece values are 13 for a chariot, 7 for a cannon, 5 for a horse, 3 for an eleph
 
 `public/engine/ffish.js` and `ffish.wasm` evaluate rules; `stockfish.js` and `stockfish.wasm` perform AI search. Both use the same source and custom rule patch for eight variants. The AI receives the initial FEN and complete move history. Every returned move is checked against the rule engine's legal move list. Separate rule and AI Workers keep the UI responsive during searches.
 
-The AI uses Classical evaluation (`Use NNUE=false`) and runs without downloading an additional NNUE model. Search uses Threads=1 and Hash=16 MiB. The pthread runtime requires shared memory and isolation headers. The declared initial WASM memory is 128 MiB for AI and 32 MiB for rules; these figures are not the total memory consumption.
+Every AI level from 18 geup to 9 dan uses NNUE evaluation (`Use NNUE=true`) with the bundled `janggi-9991472750de.nnue` model (11,261,920 bytes, approximately 10.74 MiB). Difficulty still controls Skill Level and thinking time.
 
-The pinned upstream commit, Emscripten version, file sizes, and SHA-256 hashes are recorded in `engine/manifest.json`. Rule changes are stored in `engine/feents-rules.patch`; adjustments to message and output connections for newer Emscripten versions are in `scripts/patch-engine-glue.mjs`.
+The Worker fetches `nnue.json` and the model relative to its own URL, verifies the size and SHA-256, then loads it into the engine's virtual filesystem through `EvalFile`. The model is served from the same origin as the app, requires no external model service, and is cached for reuse.
+
+Game preparation waits for confirmed NNUE activation; missing or corrupt models report an error instead of silently switching to Classical evaluation. AI initialization allows up to 60 seconds for the initial download, and cancellation aborts outstanding downloads. Search uses Threads=1 and Hash=16 MiB. The pthread runtime requires shared memory and isolation headers. The declared initial WASM memory is 128 MiB for AI and 32 MiB for rules; these figures are not the total memory consumption.
+
+The pinned upstream commit, Emscripten version, model source, file sizes, and SHA-256 hashes are recorded in `engine/manifest.json`. Model metadata is maintained in `public/engine/nnue.json`. All eight FEENTS variants use the `janggi` NNUE alias. Rule changes are stored in `engine/feents-rules.patch`; adjustments to message and output connections for newer Emscripten versions are in `scripts/patch-engine-glue.mjs`.
 
 After activating an Emscripten 3.1.74 environment, rebuild both engines with the following commands. Network access to download the GitHub source, along with make, patch, curl, and Node.js, is required.
 
@@ -83,16 +87,17 @@ npm test
 npm run build
 ```
 
-The build script downloads the pinned source into a temporary directory, applies patches, and replaces the assets and manifest only after both engine builds succeed. Normal app builds do not run this process.
+The build script validates the bundled model, downloads the pinned source into a temporary directory, and builds with `nnue=yes` and `embedded_nnue=no`. `load_net=` skips downloading the unrelated default chess network. In this upstream version, `NNUE_EMBEDDING_OFF` disables the embedded default model; it does not remove NNUE evaluation. Patches are applied and assets and manifest are replaced only after both engine builds succeed. Normal app builds do not run this process.
 
 ## Verification scope
 
-`npm test` runs 99 tests covering formations and scoring, actual WASM rules and AI, time controls, game state, touch areas, input, and deployment. Bash, OpenSSH, and rsync are required for the deployment tests. The main checks include:
+`npm test` runs 104 tests covering formations and scoring, actual WASM rules and AI, time controls, game state, touch areas, input, and deployment. Bash, OpenSSH, and rsync are required for the deployment tests. The main checks include:
 
 - All 256 initial combinations of sides, formations, and rules; coordinate/FEN round trips; and movement, blocking, captures, and palace restrictions for every piece type.
 - Breaking, accepting, and disabling bikjang; consecutive passes; the 10↔9-point material threshold and compensation; checkmate precedence; repetition restrictions; and history restoration.
-- Actual legal AI moves across 27 difficulty levels and eight rule variants, searches immediately before a repetition limit, and complete AI games from initial setup to the end.
-- Actual local rsync updates and stale-file removal, invalid deployment settings, incomplete builds, symlinks, SSH/transfer failure handling, and temporary key cleanup. Deployment tests use temporary directories and never connect to a production server.
+- Confirmed NNUE activation and actual legal AI moves across 27 difficulty levels and eight rule variants, searches immediately before a repetition limit, and complete AI games from initial setup to the end.
+- Actual Worker startup and searches with NNUE under root and subdirectory URLs; rejecting missing, truncated, or corrupt models and Classical fallback; and aborting downloads during disposal. These checks run in Node without starting a server or browser.
+- Actual local rsync updates and stale-file removal, invalid deployment settings, incomplete builds including missing or corrupt NNUE models, symlinks, SSH/transfer failure handling, and temporary key cleanup. Deployment tests use temporary directories and never connect to a production server.
 - Overtime boundaries and delayed clock updates; moving first or second; zero, limited, and unlimited undo allowances; search cancellation; late responses after resignation or a new game; error recovery; and leaving the page.
 - Delayed or failed engine initialization, retries, and stale initialization responses from previous games; excluding preparation time from the clock and accepting the first move immediately after readiness. The main area stays blurred with a loading indicator during preparation.
 - Undo restoration keeps the board visible without a loading modal while briefly pausing moves, repeated undo actions, and the clock. Checks also cover restoration failure, leaving the page, and ignoring stale restoration responses after starting a new game.
@@ -108,5 +113,7 @@ The shared header follows the `feents-design` skill and the [restaurant map](htt
 Sides, pieces, and formations were referenced from [PyChess's janggi guide](https://www.pychess.org/variants/janggi). The wooden board and octagonal piece bodies are SVGs created for this project.
 
 Piece lettering is derived from [Kadagaden's chess-pieces](https://github.com/Kadagaden/chess-pieces/tree/b035b0cc6a68e9fb99c872c8fe073c3ae3eba8a0/janggi_kakao_janggi_style_white) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Lettering strokes were extracted from the 14 original pieces, effects were removed, and the viewBox, size, and colors were adjusted to fit the outlines. Glyph data is stored in `src/assets/janggi-glyphs.js`; author attribution, change notes, and the full license text are in `public/licenses/` and included in the build. No external assets are requested at runtime.
+
+The unmodified Janggi NNUE model is provided by [Fairy-Stockfish-NNUE](https://github.com/fairy-stockfish/Fairy-Stockfish-NNUE/tree/09209ba8bc970c9909f63c153981f065b56a3784), credited to belzedar_, and redistributed under the upstream GPL v3 license. Attribution and the full license are included in `public/licenses/janggi-nnue.txt` and `janggi-nnue-COPYING.txt`, and copied into production builds.
 
 Local work reports are organized by date in `result_yyyyMMdd.html`. Result HTML files, `prompt.md`, `AGENTS.md`, and `docs/` are internal work records excluded from Git.
